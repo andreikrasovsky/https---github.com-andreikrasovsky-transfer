@@ -1,1 +1,16 @@
-123
+{
+  "pipeline": [
+    {
+      "type": "source:schedule",
+      "schedule": {
+        "kind": "interval",
+        "unit": "hour",
+        "value": 4
+      }
+    },
+    {
+      "type": "action:JavaScript",
+      "script": "// `context.getService` function lets the script get access to various services and APIs.\n// For example `targetprocess/api/v2` service lets the script make queries to Targetprocess API v2.\nconst api = context.getService(\"targetprocess/api/v2\");\n\n// args.ResourceId contains numeric ID of the modified Targetprocess entity like Feature.\n\nconst utils = require('utils');\nconst cmds = [];\nconst now = new Date();\nconst CMDS_LIMIT = 100; \nvar someEpics = [];\nconst epics = [];\nconst triggerCmds = [];\ndo {\n someEpics = await api.queryAsync('Epic', {\n   select: `{id,name}`,\n   orderBy: `Id`,\n    take: 1000,\n    skip: epics.length\n});\n  epics.push.apply(epics, someEpics);\n}\nwhile (someEpics.length > 0 && someEpics.length === 1000);\nconsole.log(\"Number of epics\", epics.length);\nconsole.log(epics)\n\n\nepics.forEach(resource => { \n\n     cmds.push({\n    command: 'ActivateNamedTrigger',\n    payload: {\n      name: 'assign-teams-to-epics',\n      data: resource.id\n    }\n  })\n  \n})\n\nif (cmds.length != 0) {\n  sendCmdsToTrigger();\n}\nconsole.log(triggerCmds, cmds)\n//return;\nreturn triggerCmds;\n\n\n\nfunction sendCmdsToTrigger() {\n  console.log(\"sending \", cmds.length, \" cmds to manual trigger\");\n  const passedCmds = Array.from(cmds);\n  triggerCmds.push({\n    command: 'ActivateNamedTrigger',\n    payload: {\n      name: 'assign-features-team-to-epic-bulk',\n      data: passedCmds\n    }\n  })\n  cmds.length = 0;     //reset the cmds array\n  \n}\n\n"
+    }
+  ]
+}
