@@ -1,12 +1,55 @@
 {
   "pipeline": [
     {
-      "name": "assign-teams-to-epics",
-      "type": "source:uniqueName"
+      "type": "source:targetprocess:EntityChanged",
+      "entityTypes": [
+        "teamassignment"
+      ],
+      "modifications": {
+        "created": true,
+        "deleted": true,
+        "updated": [
+          "Team",
+          "Assignable"
+        ]
+      }
+    },
+    {
+      "or": [
+        {
+          "and": [
+            {
+              "value": {
+                "type": "constant",
+                "value": "Feature"
+              },
+              "target": {
+                "name": "Name",
+                "type": "field",
+                "target": {
+                  "name": "EntityType",
+                  "type": "field",
+                  "target": {
+                    "name": "Assignable",
+                    "type": "field",
+                    "target": {
+                      "type": "pipelineBlockOutput"
+                    }
+                  }
+                }
+              },
+              "operator": {
+                "type": "is"
+              }
+            }
+          ]
+        }
+      ],
+      "type": "filter:Relational"
     },
     {
       "type": "action:JavaScript",
-      "script": "// `context.getService` function lets the script get access to various services and APIs.\n// For example `targetprocess/api/v2` service lets the script make queries to Targetprocess API v2.\nconst api = context.getService(\"targetprocess/api/v2\");\nconst utils = require('utils');\nconst epicId = args.data;\n\nconsole.log(\"epicID\",epicId)\n\n\n/*\nconst featureInfo = await api.queryAsync('Feature', {\n  where :`id=${featureId}`,\n  select: '{id,name, epic}'\n});\nconsole.log(featureInfo)\n\nif (!featureInfo[0].epic) { \n  console.log(\"Feature doesn't have a parent Epic\")\n  return;\n}*/\n\n//--- get all features and their teams\nconst allFeatures= await api.queryAsync('Feature', {\n  where :`Epic.id=${epicId}`,\n  select: '{id,name, epic,assignedteams:assignedteams.select({id,team})}'\n});\nconst teamsOnFeatures = [];\nfor (let i = 0; i < allFeatures.length; i++) { \n  if (allFeatures[i].assignedteams.length > 0) { \n    for (let j = 0; j < allFeatures[i].assignedteams.length; j++) { \n      teamsOnFeatures.push(allFeatures[i].assignedteams[j].team.id)\n    }\n  }\n}\nconst uniqueFeatureTeams = [...new Set(teamsOnFeatures)];\n// ----------Get teams from Epic\nconst epicInfo= await api.getByIdAsync('Epic',epicId, {\n\n  select: '{id,name, assignedteams:assignedteams.select({id,team})}'\n});\nconst teamsOnEpic = [];\nconsole.log(\"Epic Info\", epicInfo)\n    for (let j = 0; j < epicInfo.assignedteams.length; j++) { \n      teamsOnEpic.push(epicInfo.assignedteams[j])\n    }\n\n\n//--------- find missing teams on Epic\nconst missingTeamsOnEpic = uniqueFeatureTeams.filter(teamId => \n  !teamsOnEpic.some(epic => epic.team.id === teamId)\n);\n\n//--------find redundunt teams on Epic\n\nconst teamstoDeleteOnEpic = teamsOnEpic.filter(epic =>\n  !uniqueFeatureTeams.includes(epic.team.id)\n);\n\nconsole.log(\"All feature\", allFeatures)\nconsole.log(\"Epic Info\", epicInfo)\nconsole.log(\"All teams on features\",teamsOnFeatures,uniqueFeatureTeams)\n//console.log(\"All teams on Epic\", teamsOnEpic)\nconsole.log(\"Missing teams on Epic\",missingTeamsOnEpic)\nconsole.log(\"Teams to Delete Epic\", teamstoDeleteOnEpic)\n\nconst cmds = [];\nmissingTeamsOnEpic.forEach(element => { \n  cmds.push(utils.createResource('TeamAssignment', {\n    Team: { id: element },\n    Assignable: {id:epicInfo.id}\n  }));\n \n})\nteamstoDeleteOnEpic.forEach(element => { \n  cmds.push(utils.deleteResource('TeamAssignment', element.id))\n  \n})\n\n\nreturn cmds;\n"
+      "script": "\nconst utils = require('utils');\nconst api = context.getService(\"targetprocess/api/v2\");\nconst cmds = [];\nconsole.log(args.Current.Assignable)\n\nconst featureInfo = await api.queryAsync('Feature', {\n  where :`id=${args.Current.Assignable.id}`,\n  select: '{id,name, epic}'\n});\nconsole.log(featureInfo)\nif (featureInfo.length > 0) { \n  if (featureInfo[0].epic) { \n       cmds.push({\n    command: 'ActivateNamedTrigger',\n    payload: {\n      name: 'assign-teams-to-epics',\n      data: featureInfo[0].epic.id\n    }\n   })\n  }\n}\n\n\n\nconsole.log(cmds)\nreturn cmds;"
     }
   ]
 }
