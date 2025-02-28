@@ -1,0 +1,21 @@
+{
+  "pipeline": [
+    {
+      "type": "source:targetprocess:EntityChanged",
+      "entityTypes": [
+        "epic"
+      ],
+      "modifications": {
+        "created": true,
+        "deleted": false,
+        "updated": [
+          "PortfolioEpic"
+        ]
+      }
+    },
+    {
+      "type": "action:JavaScript",
+      "script": "const api = context.getService(\"targetprocess/api/v2\");\nconst utils = require('utils');\nconst epicId = args.Current.Id\nconst portfolioEpic = args.Current.PortfolioEpic ? args.Current.PortfolioEpic.Id :null\nconst cmds = [];\n\nconst allFeatures= await api.queryAsync('Feature', {\n  where :`Epic.id=${epicId}`,\n  select: '{id,name, epic}'\n});\n\nconsole.log(\"Feature list\", allFeatures)\n\nallFeatures.forEach(element => { \n\n  cmds.push(utils.updateResource('Feature', element.id,{\n    PortfolioEpic: portfolioEpic!=null?{ id: portfolioEpic }:null,\n\n  }));\n\n})\n\nconsole.log(cmds)\n\nreturn cmds;"
+    }
+  ]
+}
